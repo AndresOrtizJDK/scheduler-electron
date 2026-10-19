@@ -127,4 +127,9 @@
   html {
     @apply font-sans;
     }
+  /* Barras de desplazamiento finas con los colores del tema. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
 }

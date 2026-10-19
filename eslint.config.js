@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'dist-electron', 'release']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -20,6 +20,13 @@ export default defineConfig([
     },
     rules: {
       'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    // Proceso principal de Electron: corre en Node.js.
+    files: ['electron/**/*.ts'],
+    languageOptions: {
+      globals: globals.node,
     },
   },
 ])
