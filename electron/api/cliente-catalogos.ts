@@ -36,12 +36,18 @@ export class ErrorApi extends Error {
   }
 }
 
-/** `true` si `GET /health` responde 200 con `{ status: "ready" }`. */
+/**
+ * `true` si `GET /health` responde 200, ya sea sin cuerpo o con
+ * `{ status: "ready" }`.
+ */
 export async function apiLista(): Promise<boolean> {
   try {
     const respuesta = await pedir("GET", "/health")
-    const cuerpo = (await respuesta.json()) as { status?: string }
-    return respuesta.ok && cuerpo.status?.toLowerCase() === "ready"
+    if (!respuesta.ok) return false
+    const texto = (await respuesta.text()).trim()
+    if (texto === "") return true
+    const cuerpo = JSON.parse(texto) as { status?: string }
+    return cuerpo.status?.toLowerCase() === "ready"
   } catch {
     return false
   }
@@ -74,10 +80,25 @@ export function obtenerCatalogo(numero: number): Promise<CatalogDetail> {
   return pedirJson<CatalogDetail>("GET", `/api/catalogs/${numero}`)
 }
 
-export function crearCatalogo(
+export async function crearCatalogo(
   solicitud: CreateCatalogRequest
 ): Promise<CatalogDetail> {
-  return pedirJson<CatalogDetail>("POST", "/api/catalogs", solicitud)
+  const creado = await pedirJson<CatalogDetail | undefined>(
+    "POST",
+    "/api/catalogs",
+    solicitud
+  )
+  if (creado) return creado
+
+  // La API respondió sin cuerpo ni `Location`: se toma el más reciente.
+  const { items } = await pedirJson<CatalogPage>(
+    "GET",
+    "/api/catalogs?page=1&pageSize=1"
+  )
+  if (items.length === 0) {
+    throw new ErrorApi(0, "El catálogo se guardó, pero no se pudo recuperar.")
+  }
+  return obtenerCatalogo(items[0].number)
 }
 
 export async function eliminarCatalogo(numero: number): Promise<void> {
@@ -98,12 +119,17 @@ async function pedirJson<T>(
   if (!respuesta.ok) {
     throw new ErrorApi(respuesta.status, await describirError(respuesta))
   }
-  // 204 (eliminar) no trae cuerpo.
-  if (respuesta.status === 204) {
+  const texto = await respuesta.text()
+  if (texto.trim() === "") {
+    // Sin cuerpo: 204 (eliminar) o 201 (crear) con el recurso en `Location`.
+    const ubicacion = respuesta.headers.get("Location")
+    if (ubicacion) {
+      return pedirJson<T>("GET", new URL(ubicacion, urlBaseApi()).pathname)
+    }
     return undefined as T
   }
   try {
-    return (await respuesta.json()) as T
+    return JSON.parse(texto) as T
   } catch {
     throw new ErrorApi(
       respuesta.status,
